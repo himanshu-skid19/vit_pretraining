@@ -48,7 +48,7 @@ def parse_args():
 
     # Data
     parser.add_argument('--data_path', type=str,
-                        default=r'C:\Users\Himanshu Singhal\Desktop\BTP\working\deepsigndb_asymmetric_gasf.npz',
+                        default=r'C:\Users\Himanshu Singhal\Desktop\BTP\vit_pretraining\deepsigndb_asymmetric_gasf.npz',
                         help='Path to .npz dataset file')
     parser.add_argument('--output_dir', type=str, default='./mae_pretrain',
                         help='Output directory for checkpoints and logs')
@@ -459,7 +459,8 @@ def main():
         batch_size=args.batch_size,
         num_workers=args.num_workers,
         train_ratio=0.9,
-        seed=args.seed
+        seed=args.seed,
+        genuine_only=True
     )
 
     # Log dataset info to wandb

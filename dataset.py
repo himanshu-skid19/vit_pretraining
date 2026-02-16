@@ -171,13 +171,44 @@ class GASFPretrainingDataset(GASFDataset):
         )
 
 
+def _is_genuine(file_name: str) -> bool:
+    """Check if a sample is genuine based on its file name.
+
+    Naming conventions handled:
+      - DeepSignDB simple:  u0001_g_0100v00.txt (genuine), u0001_s_0100f00.txt (skilled forgery)
+      - DeepSignDB complex: u0231_g_u1013s0001_sg0001.txt (genuine), u0231_s_u1013s0001_sg0003.txt (skilled)
+      - Generic:            *genuine* / *forgery* / *skilled*
+    The second underscore-delimited field ('g' or 's') is the authoritative marker.
+    """
+    name_lower = file_name.lower()
+    parts = name_lower.split('_')
+
+    # Use the second field (index 1) as the primary indicator when available
+    if len(parts) >= 2:
+        marker = parts[1]
+        if marker == 'g':
+            return True
+        if marker == 's':
+            return False
+
+    # Fallback: keyword-based detection
+    if 'forgery' in name_lower or 'f_' in name_lower or 'skilled' in name_lower:
+        return False
+    if 'genuine' in name_lower or 'g_' in name_lower:
+        return True
+
+    # Default: treat as genuine
+    return True
+
+
 def create_dataloaders(
     npz_path: str,
     batch_size: int = 32,
     num_workers: int = 4,
     train_ratio: float = 0.9,
     seed: int = 42,
-    augment_train: bool = True
+    augment_train: bool = True,
+    genuine_only: bool = False
 ) -> Tuple[DataLoader, DataLoader]:
     """
     Create train and validation dataloaders.
@@ -189,6 +220,7 @@ def create_dataloaders(
         train_ratio: Fraction of data for training
         seed: Random seed for reproducibility
         augment_train: Whether to augment training data
+        genuine_only: If True, only use genuine samples (exclude forged/skilled)
 
     Returns:
         train_loader, val_loader
@@ -197,6 +229,15 @@ def create_dataloaders(
     full_data = np.load(npz_path, allow_pickle=True)
     images = full_data['gasf_data'].astype(np.float32)
     file_names = full_data['file_names']
+
+    # Filter to genuine samples only if requested
+    if genuine_only:
+        genuine_mask = np.array([
+            _is_genuine(str(name)) for name in file_names
+        ])
+        images = images[genuine_mask]
+        file_names = file_names[genuine_mask]
+        print(f"Filtered to genuine samples only: {len(images)} / {genuine_mask.shape[0]} total")
 
     num_samples = len(images)
     num_train = int(num_samples * train_ratio)

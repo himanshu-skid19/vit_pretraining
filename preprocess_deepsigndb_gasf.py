@@ -308,7 +308,7 @@ def preprocess_deepsigndb(
 if __name__ == "__main__":
     # Configuration
     DEVELOPMENT_DIR = r"C:\Users\Himanshu Singhal\Desktop\BTP\DeepSignDB\DeepSignDB\Development"
-    OUTPUT_PATH = r"C:\Users\Himanshu Singhal\Desktop\BTP\working\deepsigndb_asymmetric_gasf.npz"
+    OUTPUT_PATH = r"C:\Users\Himanshu Singhal\Desktop\BTP\vit_pretraining\deepsigndb_asymmetric_gasf.npz"
     TARGET_LENGTH = 512  # Sequence length before GASF (output will be 256x256)
 
     # Run preprocessing

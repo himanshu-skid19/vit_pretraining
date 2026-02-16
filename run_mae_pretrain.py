@@ -143,7 +143,8 @@ def main():
         batch_size=BATCH_SIZE,
         num_workers=NUM_WORKERS,
         train_ratio=0.9,
-        seed=SEED
+        seed=SEED,
+        genuine_only=True
     )
 
     # Log dataset info to wandb
