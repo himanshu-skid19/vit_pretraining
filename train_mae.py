@@ -48,7 +48,7 @@ def parse_args():
 
     # Data
     parser.add_argument('--data_path', type=str,
-                        default=r'C:\Users\Himanshu Singhal\Desktop\BTP\vit_pretraining\deepsigndb_asymmetric_gasf.npz',
+                        default=r'/teamspace/studios/this_studio/deepsigndb_asymmetric_gasf.npz',
                         help='Path to .npz dataset file')
     parser.add_argument('--output_dir', type=str, default='./mae_pretrain',
                         help='Output directory for checkpoints and logs')
@@ -85,7 +85,7 @@ def parse_args():
                         help='Gradient clipping norm')
 
     # System
-    parser.add_argument('--num_workers', type=int, default=4,
+    parser.add_argument('--num_workers', type=int, default=1,
                         help='Number of data loading workers')
     parser.add_argument('--seed', type=int, default=42,
                         help='Random seed')
@@ -97,9 +97,9 @@ def parse_args():
     # Logging
     parser.add_argument('--log_freq', type=int, default=100,
                         help='Logging frequency (iterations)')
-    parser.add_argument('--save_freq', type=int, default=10,
+    parser.add_argument('--save_freq', type=int, default=20,
                         help='Checkpoint save frequency (epochs)')
-    parser.add_argument('--vis_freq', type=int, default=5,
+    parser.add_argument('--vis_freq', type=int, default=1,
                         help='Visualization frequency (epochs)')
 
     # Wandb
@@ -183,16 +183,6 @@ def save_checkpoint(model, optimizer, scheduler, scaler, epoch, loss, args, path
     }
     torch.save(checkpoint, path)
     print(f"Checkpoint saved to {path}")
-
-    # Log checkpoint to wandb as artifact
-    if wandb_run is not None and 'best' in path:
-        artifact = wandb.Artifact(
-            name=f'mae-checkpoint-best',
-            type='model',
-            description=f'Best MAE checkpoint at epoch {epoch}'
-        )
-        artifact.add_file(path)
-        wandb_run.log_artifact(artifact)
 
 
 def load_checkpoint(path, model, optimizer=None, scheduler=None, scaler=None):
@@ -489,7 +479,7 @@ def main():
             'trainable_params': trainable_params
         })
         # Watch model gradients and parameters
-        wandb.watch(model, log='all', log_freq=args.log_freq * 10)
+        wandb.watch(model, log='gradients', log_freq=1000)
 
     # Optimizer
     optimizer = optim.AdamW(
@@ -576,11 +566,12 @@ def main():
                 wandb_run.summary['best_val_loss'] = best_loss
                 wandb_run.summary['best_epoch'] = epoch
 
-        # Save periodic checkpoint
+        # Save periodic checkpoint (overwrite previous to save disk space)
         if (epoch + 1) % args.save_freq == 0:
+            ckpt_path = os.path.join(args.output_dir, 'latest_checkpoint.pth')
             save_checkpoint(
                 model, optimizer, scheduler, scaler, epoch, val_loss, args,
-                os.path.join(args.output_dir, f'checkpoint_epoch_{epoch:04d}.pth')
+                ckpt_path
             )
 
         # Visualization
@@ -598,16 +589,6 @@ def main():
     encoder_path = os.path.join(args.output_dir, 'encoder_weights.pth')
     torch.save(encoder_state, encoder_path)
     print(f"\nEncoder weights saved to {encoder_path}")
-
-    # Log final encoder weights to wandb
-    if wandb_run is not None:
-        artifact = wandb.Artifact(
-            name='mae-encoder-weights',
-            type='model',
-            description='Pretrained MAE encoder weights for fine-tuning'
-        )
-        artifact.add_file(encoder_path)
-        wandb_run.log_artifact(artifact)
 
     writer.close()
 

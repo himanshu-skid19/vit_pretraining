@@ -387,15 +387,21 @@ class MAE(nn.Module):
         # Forward pass
         loss, pred, mask = self.forward(imgs, mask_ratio)
 
-        # Unpatchify predictions
+        # Get original patches
+        orig_patches = self.patchify(imgs)
+
+        # If normalized pixel loss, denormalize predictions
         if self.norm_pix_loss:
-            # Denormalize predictions
-            target = self.patchify(imgs)
-            mean = target.mean(dim=-1, keepdim=True)
-            var = target.var(dim=-1, keepdim=True)
+            mean = orig_patches.mean(dim=-1, keepdim=True)
+            var = orig_patches.var(dim=-1, keepdim=True)
             pred = pred * (var + 1e-6).sqrt() + mean
 
-        reconstructed = self.unpatchify(pred)
+        # Merge: use pred only for masked patches
+        mask_expanded = mask.unsqueeze(-1).expand_as(orig_patches)
+
+        merged_patches = pred * mask_expanded + orig_patches * (1 - mask_expanded)
+
+        reconstructed = self.unpatchify(merged_patches)
 
         # Create masked input visualization
         patches = self.patchify(imgs)

@@ -179,7 +179,7 @@ def main():
     # Watch model with wandb
     if wandb_run is not None:
         wandb_run.config.update({'total_params': total_params})
-        wandb.watch(model, log='all', log_freq=LOG_FREQ * 10)
+        wandb.watch(model, log='gradients', log_freq=LOG_FREQ * 10)
 
     # Optimizer
     optimizer = torch.optim.AdamW(
@@ -259,11 +259,12 @@ def main():
                 wandb_run.summary['best_val_loss'] = best_loss
                 wandb_run.summary['best_epoch'] = epoch
 
-        # Periodic checkpoint
+        # Periodic checkpoint (overwrite previous to save disk space)
         if (epoch + 1) % SAVE_FREQ == 0:
+            ckpt_path = os.path.join(output_dir, 'latest_checkpoint.pth')
             save_checkpoint(
                 model, optimizer, scheduler, scaler, epoch, val_loss, args,
-                os.path.join(output_dir, f'checkpoint_epoch_{epoch:04d}.pth')
+                ckpt_path
             )
 
         # Visualization
@@ -280,16 +281,6 @@ def main():
     encoder_state = model.get_encoder_state_dict()
     encoder_path = os.path.join(output_dir, 'encoder_weights.pth')
     torch.save(encoder_state, encoder_path)
-
-    # Log encoder weights to wandb
-    if wandb_run is not None:
-        artifact = wandb.Artifact(
-            name='mae-encoder-weights',
-            type='model',
-            description='Pretrained MAE encoder weights'
-        )
-        artifact.add_file(encoder_path)
-        wandb_run.log_artifact(artifact)
 
     writer.close()
 
