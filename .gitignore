@@ -2,3 +2,4 @@ __pycache__/
 *.npz
 mae_pretrain/
 wandb/
+backup/

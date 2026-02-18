@@ -65,7 +65,7 @@ def main():
     # Masking curriculum
     MASK_CURRICULUM = True        # Set to False for constant mask ratio
     MASK_CURRICULUM_START = 0.75  # Hold at this ratio during warmup
-    MASK_CURRICULUM_END = 0.90    # Ramp up to this ratio
+    MASK_CURRICULUM_END = 0.95    # Ramp up to this ratio
     MASK_CURRICULUM_WARMUP = 30   # Epochs to hold before ramping
 
     # System

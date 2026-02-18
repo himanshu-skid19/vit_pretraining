@@ -157,8 +157,10 @@ def get_mask_ratio(epoch, args):
     Get mask ratio for the current epoch based on curriculum schedule.
 
     Schedule:
-      - Epochs [0, warmup): hold at mask_curriculum_start (default 0.75)
-      - Epochs [warmup, total): linearly ramp from start to end (default 0.75 -> 0.90)
+      - Epochs [0, warmup): hold at mask_curriculum_start
+      - Epochs [warmup, total): cosine ramp from start to end
+        Uses (1 - cos(progress * pi/2)) which rises slowly at first then
+        accelerates — similar to an exponential curve.
 
     If mask_curriculum is disabled, returns args.mask_ratio (constant).
     """
@@ -174,7 +176,9 @@ def get_mask_ratio(epoch, args):
 
     progress = (epoch - args.mask_curriculum_warmup) / ramp_epochs
     progress = min(progress, 1.0)
-    return args.mask_curriculum_start + progress * (args.mask_curriculum_end - args.mask_curriculum_start)
+    # Slow start, accelerating ramp (1 - cos curve, first quadrant)
+    cosine_progress = 1 - np.cos(progress * np.pi / 2)
+    return args.mask_curriculum_start + cosine_progress * (args.mask_curriculum_end - args.mask_curriculum_start)
 
 
 def create_model(args):
