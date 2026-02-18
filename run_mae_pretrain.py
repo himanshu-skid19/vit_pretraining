@@ -25,7 +25,8 @@ from train_mae import (
     validate,
     visualize_reconstruction,
     save_checkpoint,
-    get_cosine_schedule_with_warmup
+    get_cosine_schedule_with_warmup,
+    get_mask_ratio
 )
 
 from torch.cuda.amp import GradScaler
@@ -55,11 +56,17 @@ def main():
     MASK_RATIO = 0.75
 
     # Training configuration
-    EPOCHS = 200
+    EPOCHS = 100
     BATCH_SIZE = 32  # Reduce if you run out of GPU memory
     LEARNING_RATE = 1.5e-4
     WARMUP_EPOCHS = 10
     WEIGHT_DECAY = 0.05
+
+    # Masking curriculum
+    MASK_CURRICULUM = True        # Set to False for constant mask ratio
+    MASK_CURRICULUM_START = 0.75  # Hold at this ratio during warmup
+    MASK_CURRICULUM_END = 0.90    # Ramp up to this ratio
+    MASK_CURRICULUM_WARMUP = 30   # Epochs to hold before ramping
 
     # System
     NUM_WORKERS = 4
@@ -213,21 +220,32 @@ def main():
         log_freq = LOG_FREQ
         epochs = EPOCHS
         batch_size = BATCH_SIZE
+        mask_ratio = MASK_RATIO
+        mask_curriculum = MASK_CURRICULUM
+        mask_curriculum_start = MASK_CURRICULUM_START
+        mask_curriculum_end = MASK_CURRICULUM_END
+        mask_curriculum_warmup = MASK_CURRICULUM_WARMUP
 
     args = Args()
 
     # Training loop
     print("\n" + "=" * 60)
     print("Starting training...")
+    if MASK_CURRICULUM:
+        print(f"Mask curriculum: {MASK_CURRICULUM_START:.0%} for {MASK_CURRICULUM_WARMUP} epochs, "
+              f"then ramp to {MASK_CURRICULUM_END:.0%}")
     print("=" * 60)
 
     best_loss = float('inf')
 
     for epoch in range(EPOCHS):
+        # Compute mask ratio for this epoch (curriculum or constant)
+        current_mask_ratio = get_mask_ratio(epoch, args)
+
         # Train
         train_loss = train_one_epoch(
             model, train_loader, optimizer, scheduler, scaler,
-            epoch, args, device, writer, wandb_run
+            epoch, args, device, writer, wandb_run, mask_ratio=current_mask_ratio
         )
 
         # Validate
@@ -236,13 +254,14 @@ def main():
         # Step scheduler
         scheduler.step()
 
-        print(f"\nEpoch {epoch} - Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}")
+        print(f"\nEpoch {epoch} - Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, Mask Ratio: {current_mask_ratio:.3f}")
 
         # Log epoch metrics to wandb
         if wandb_run is not None:
             wandb_run.log({
                 'train/loss_epoch': train_loss,
                 'val/loss_epoch': val_loss,
+                'train/mask_ratio': current_mask_ratio,
                 'epoch': epoch
             })
 

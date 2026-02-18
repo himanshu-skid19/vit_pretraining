@@ -84,6 +84,16 @@ def parse_args():
     parser.add_argument('--clip_grad', type=float, default=1.0,
                         help='Gradient clipping norm')
 
+    # Masking curriculum
+    parser.add_argument('--mask_curriculum', action='store_true', default=False,
+                        help='Enable masking curriculum (ramp mask_ratio over training)')
+    parser.add_argument('--mask_curriculum_start', type=float, default=0.75,
+                        help='Starting mask ratio for curriculum')
+    parser.add_argument('--mask_curriculum_end', type=float, default=0.90,
+                        help='Final mask ratio for curriculum')
+    parser.add_argument('--mask_curriculum_warmup', type=int, default=30,
+                        help='Epochs to hold at starting mask ratio before ramping')
+
     # System
     parser.add_argument('--num_workers', type=int, default=1,
                         help='Number of data loading workers')
@@ -140,6 +150,31 @@ def get_cosine_schedule_with_warmup(optimizer, warmup_epochs, total_epochs, min_
             return 0.5 * (1 + np.cos(np.pi * progress))
 
     return optim.lr_scheduler.LambdaLR(optimizer, lr_lambda)
+
+
+def get_mask_ratio(epoch, args):
+    """
+    Get mask ratio for the current epoch based on curriculum schedule.
+
+    Schedule:
+      - Epochs [0, warmup): hold at mask_curriculum_start (default 0.75)
+      - Epochs [warmup, total): linearly ramp from start to end (default 0.75 -> 0.90)
+
+    If mask_curriculum is disabled, returns args.mask_ratio (constant).
+    """
+    if not args.mask_curriculum:
+        return args.mask_ratio
+
+    if epoch < args.mask_curriculum_warmup:
+        return args.mask_curriculum_start
+
+    ramp_epochs = args.epochs - args.mask_curriculum_warmup
+    if ramp_epochs <= 0:
+        return args.mask_curriculum_end
+
+    progress = (epoch - args.mask_curriculum_warmup) / ramp_epochs
+    progress = min(progress, 1.0)
+    return args.mask_curriculum_start + progress * (args.mask_curriculum_end - args.mask_curriculum_start)
 
 
 def create_model(args):
@@ -267,7 +302,7 @@ def visualize_reconstruction(model, images, epoch, output_dir, device, wandb_run
     return fig_path
 
 
-def train_one_epoch(model, train_loader, optimizer, scheduler, scaler, epoch, args, device, writer, wandb_run=None):
+def train_one_epoch(model, train_loader, optimizer, scheduler, scaler, epoch, args, device, writer, wandb_run=None, mask_ratio=None):
     """Train for one epoch."""
     model.train()
 
@@ -282,10 +317,10 @@ def train_one_epoch(model, train_loader, optimizer, scheduler, scaler, epoch, ar
         # Forward pass with mixed precision
         if args.amp:
             with autocast():
-                loss, pred, mask = model(images)
+                loss, pred, mask = model(images, mask_ratio=mask_ratio)
                 loss = loss / args.accum_steps
         else:
-            loss, pred, mask = model(images)
+            loss, pred, mask = model(images, mask_ratio=mask_ratio)
             loss = loss / args.accum_steps
 
         # Backward pass
@@ -526,10 +561,13 @@ def main():
     for epoch in range(start_epoch, args.epochs):
         epoch_start = time.time()
 
+        # Compute mask ratio for this epoch (curriculum or constant)
+        current_mask_ratio = get_mask_ratio(epoch, args)
+
         # Train
         train_loss = train_one_epoch(
             model, train_loader, optimizer, scheduler, scaler,
-            epoch, args, device, writer, wandb_run
+            epoch, args, device, writer, wandb_run, mask_ratio=current_mask_ratio
         )
 
         # Validate
@@ -541,13 +579,14 @@ def main():
         epoch_time = time.time() - epoch_start
 
         print(f"\nEpoch {epoch} completed in {epoch_time:.1f}s")
-        print(f"Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}")
+        print(f"Train Loss: {train_loss:.4f}, Val Loss: {val_loss:.4f}, Mask Ratio: {current_mask_ratio:.3f}")
 
         # Log epoch metrics to wandb
         if wandb_run is not None:
             wandb_run.log({
                 'train/loss_epoch': train_loss,
                 'val/loss_epoch': val_loss,
+                'train/mask_ratio': current_mask_ratio,
                 'epoch': epoch,
                 'epoch_time': epoch_time
             })
